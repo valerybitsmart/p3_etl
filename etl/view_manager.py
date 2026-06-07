@@ -70,10 +70,10 @@ def _create_or_alter_view(
         if _table_exists(conn, schema, table):
             valid.append((tenant, full_table))
         else:
-            logger.warning("Skipping %s from view %s — table does not exist yet", full_table, view_name)
+            logger.warning("Skipping %s from view %s - table does not exist yet", full_table, view_name)
 
     if not valid:
-        logger.info("No tables ready for view %s — skipping", view_name)
+        logger.info("No tables ready for view %s - skipping", view_name)
         return
 
     union_parts = [
@@ -85,7 +85,7 @@ def _create_or_alter_view(
     schema_name, view_bare = _split_view(view_name)
 
     # pyodbc cannot run multiple statements in one execute() call.
-    # Split into DROP (if exists) + CREATE — two separate round-trips.
+    # Split into DROP (if exists) + CREATE - two separate round-trips.
     drop_ddl = (
         f"IF OBJECT_ID('[{schema_name}].[{view_bare}]', 'V') IS NOT NULL "
         f"DROP VIEW [{schema_name}].[{view_bare}]"

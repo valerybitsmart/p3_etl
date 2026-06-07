@@ -26,8 +26,8 @@ from etl.view_manager import refresh_views
 
 logging.basicConfig(
     level=os.getenv("LOG_LEVEL", "INFO"),
-    format="%(asctime)s %(levelname)-8s %(name)s — %(message)s",
-    handlers=[logging.StreamHandler(sys.stdout)],
+    format="%(asctime)s %(levelname)-8s %(name)s - %(message)s",
+    handlers=[logging.StreamHandler(stream=open(sys.stdout.fileno(), mode="w", encoding="utf-8", closefd=False))],
 )
 logger = logging.getLogger("etl.main")
 
@@ -41,7 +41,7 @@ def run_endpoint(conn, cfg: dict) -> int:
     tenant   = cfg["tenant"]
     endpoint = cfg["endpoint"]
     table    = cfg["target_table"]
-    logger.info("=== [%s] %s → %s ===", tenant, endpoint, table)
+    logger.info("=== [%s] %s -> %s ===", tenant, endpoint, table)
 
     total = 0
     first_page = True
@@ -56,7 +56,7 @@ def run_endpoint(conn, cfg: dict) -> int:
         logger.info("  [%s/%s] loaded %d rows (total: %d)", tenant, endpoint, len(page), total)
 
     update_run_stats(conn, cfg["id"], total)
-    logger.info("=== [%s] %s done — %d rows ===", tenant, endpoint, total)
+    logger.info("=== [%s] %s done - %d rows ===", tenant, endpoint, total)
     return total
 
 
