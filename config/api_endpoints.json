@@ -1,0 +1,14 @@
+[
+  {
+    "endpoint": "AGENTS",
+    "target_table": "dbo.priority_agents",
+    "active": true,
+    "description": "Sales agents master data"
+  },
+  {
+    "endpoint": "CUSTOMERS",
+    "target_table": "dbo.priority_customers",
+    "active": true,
+    "description": "Customer master data"
+  }
+]
