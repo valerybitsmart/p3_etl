@@ -12,6 +12,8 @@ import argparse
 import logging
 import os
 import sys
+from datetime import datetime
+from pathlib import Path
 
 from dotenv import load_dotenv
 
@@ -24,11 +26,24 @@ from etl.notify import alert_errors, alert_no_endpoints, alert_success
 from etl.table_manager import ensure_table, truncate_table
 from etl.view_manager import refresh_views
 
-logging.basicConfig(
-    level=os.getenv("LOG_LEVEL", "INFO"),
-    format="%(asctime)s %(levelname)-8s %(name)s - %(message)s",
-    handlers=[logging.StreamHandler(stream=open(sys.stdout.fileno(), mode="w", encoding="utf-8", closefd=False))],
-)
+def _setup_logging() -> None:
+    log_dir = Path(os.getenv("LOG_DIR", "logs"))
+    log_dir.mkdir(parents=True, exist_ok=True)
+    log_file = log_dir / f"run_{datetime.now().strftime('%Y-%m-%d_%H-%M-%S')}.log"
+
+    fmt = "%(asctime)s %(levelname)-8s %(name)s - %(message)s"
+    level = os.getenv("LOG_LEVEL", "INFO")
+
+    handlers: list[logging.Handler] = [
+        logging.StreamHandler(
+            stream=open(sys.stdout.fileno(), mode="w", encoding="utf-8", closefd=False)
+        ),
+        logging.FileHandler(log_file, encoding="utf-8"),
+    ]
+    logging.basicConfig(level=level, format=fmt, handlers=handlers)
+    logging.getLogger("etl.main").info("Log file: %s", log_file)
+
+_setup_logging()
 logger = logging.getLogger("etl.main")
 
 
