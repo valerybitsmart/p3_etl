@@ -54,7 +54,7 @@ def load_all_active_endpoints(conn: pyodbc.Connection) -> list[dict]:
     cursor = conn.cursor()
     cursor.execute(
         "SELECT c.id, c.tenant, c.endpoint, c.target_table, c.description, "
-        "       t.base_url, t.auth "
+        "       c.subform_name, c.subform_table, t.base_url, t.auth "
         "FROM dbo.etl_api_config c "
         "JOIN dbo.etl_tenant_config t ON t.tenant = c.tenant "
         "WHERE c.active = 1 AND t.active = 1 "

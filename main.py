@@ -34,30 +34,60 @@ logger = logging.getLogger("etl.main")
 
 def run_endpoint(conn, cfg: dict) -> int:
     """
-    Load one tenant/endpoint combination.
-    cfg keys: id, tenant, endpoint, target_table, base_url, auth
-    Returns row count. Raises on failure.
+    Load one tenant/endpoint combination, optionally expanding a subform.
+    Returns parent row count. Raises on failure.
     """
-    tenant   = cfg["tenant"]
-    endpoint = cfg["endpoint"]
-    table    = cfg["target_table"]
-    logger.info("=== [%s] %s -> %s ===", tenant, endpoint, table)
+    tenant        = cfg["tenant"]
+    endpoint      = cfg["endpoint"]
+    table         = cfg["target_table"]
+    subform_name  = cfg.get("subform_name")   # e.g. 'FNCITEMS_SUBFORM'
+    subform_table = cfg.get("subform_table")  # e.g. 'dbo.tiltan_fncitems'
 
-    total = 0
-    first_page = True
+    if subform_name:
+        logger.info("=== [%s] %s (expand: %s) ===", tenant, endpoint, subform_name)
+    else:
+        logger.info("=== [%s] %s -> %s ===", tenant, endpoint, table)
 
-    for page in fetch_all(cfg["base_url"], cfg["auth"], endpoint):
+    total_parent  = 0
+    total_subform = 0
+    first_page    = True
+
+    for page in fetch_all(cfg["base_url"], cfg["auth"], endpoint, expand=subform_name):
         if first_page:
-            ensure_table(conn, table, page[0])
+            # Strip subform key from parent sample before schema inference
+            parent_sample = {k: v for k, v in page[0].items() if k != subform_name}
+            ensure_table(conn, table, parent_sample)
             truncate_table(conn, table)
+            if subform_name and subform_table:
+                # Gather a non-empty subform sample across the first page
+                subform_sample = next(
+                    (row for rec in page for row in (rec.get(subform_name) or [])),
+                    None,
+                )
+                if subform_sample:
+                    ensure_table(conn, subform_table, subform_sample)
+                    truncate_table(conn, subform_table)
             first_page = False
 
-        total += bulk_insert(conn, table, page)
-        logger.info("  [%s/%s] loaded %d rows (total: %d)", tenant, endpoint, len(page), total)
+        # Separate parent rows from subform rows
+        parent_rows  = [{k: v for k, v in rec.items() if k != subform_name} for rec in page]
+        total_parent += bulk_insert(conn, table, parent_rows)
 
-    update_run_stats(conn, cfg["id"], total)
-    logger.info("=== [%s] %s done - %d rows ===", tenant, endpoint, total)
-    return total
+        if subform_name and subform_table:
+            subform_rows   = [row for rec in page for row in (rec.get(subform_name) or [])]
+            total_subform += bulk_insert(conn, subform_table, subform_rows)
+
+        logger.info(
+            "  [%s/%s] parent: %d rows | subform: %d rows",
+            tenant, endpoint, total_parent, total_subform,
+        )
+
+    update_run_stats(conn, cfg["id"], total_parent)
+    logger.info(
+        "=== [%s] %s done - parent: %d rows, subform: %d rows ===",
+        tenant, endpoint, total_parent, total_subform,
+    )
+    return total_parent
 
 
 def main() -> None:

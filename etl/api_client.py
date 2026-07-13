@@ -26,20 +26,29 @@ def _get(session: requests.Session, url: str, params: dict | None = None) -> dic
     return resp.json()
 
 
-def fetch_all(base_url: str, auth: str, endpoint: str) -> Generator[list[dict], None, None]:
+def fetch_all(
+    base_url: str,
+    auth: str,
+    endpoint: str,
+    expand: str | None = None,
+) -> Generator[list[dict], None, None]:
     """
     Yield pages of records from a Priority OData endpoint.
 
     Args:
         base_url:  Tenant base URL, e.g. https://.../tiltan
         auth:      Authorization header value, e.g. 'Basic ABC123=='
-        endpoint:  OData entity name, e.g. 'AGENTS'
+        endpoint:  OData entity name, e.g. 'FNCTRANS'
+        expand:    Optional OData $expand subform, e.g. 'FNCITEMS_SUBFORM'
     """
     session = _make_session(auth)
     url = f"{base_url.rstrip('/')}/{endpoint}"
     batch = int(os.getenv("BATCH_SIZE", 1000))
 
     params: dict = {"$top": batch, "$skip": 0}
+    if expand:
+        params["$expand"] = expand
+
     while True:
         data = _get(session, url, params)
         records = data.get("value", [])
