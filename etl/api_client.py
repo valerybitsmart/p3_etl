@@ -8,22 +8,37 @@ from tenacity import before_sleep_log, retry, stop_after_attempt, wait_exponenti
 logger = logging.getLogger(__name__)
 
 
+def _cfg_int(key: str, default: int) -> int:
+    return int(os.getenv(key, default))
+
+
 def _make_session(auth: str) -> requests.Session:
     session = requests.Session()
     session.headers.update({"Authorization": auth})
     return session
 
 
-@retry(
-    stop=stop_after_attempt(3),
-    wait=wait_exponential(multiplier=1, min=2, max=30),
-    before_sleep=before_sleep_log(logger, logging.WARNING),
-    reraise=True,
-)
 def _get(session: requests.Session, url: str, params: dict | None = None) -> dict:
-    resp = session.get(url, params=params, timeout=60)
-    resp.raise_for_status()
-    return resp.json()
+    attempts  = _cfg_int("API_RETRY_ATTEMPTS", 3)
+    wait_min  = _cfg_int("API_RETRY_WAIT_MIN", 2)
+    wait_max  = _cfg_int("API_RETRY_WAIT_MAX", 30)
+    timeout   = (
+        _cfg_int("API_CONNECT_TIMEOUT", 10),
+        _cfg_int("API_READ_TIMEOUT", 300),
+    )
+
+    @retry(
+        stop=stop_after_attempt(attempts),
+        wait=wait_exponential(multiplier=1, min=wait_min, max=wait_max),
+        before_sleep=before_sleep_log(logger, logging.WARNING),
+        reraise=True,
+    )
+    def _call() -> dict:
+        resp = session.get(url, params=params, timeout=timeout)
+        resp.raise_for_status()
+        return resp.json()
+
+    return _call()
 
 
 def fetch_all(
@@ -43,7 +58,7 @@ def fetch_all(
     """
     session = _make_session(auth)
     url = f"{base_url.rstrip('/')}/{endpoint}"
-    batch = int(os.getenv("BATCH_SIZE", 1000))
+    batch = _cfg_int("BATCH_SIZE", 1000)
 
     params: dict = {"$top": batch, "$skip": 0}
     if expand:
