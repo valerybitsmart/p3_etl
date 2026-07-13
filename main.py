@@ -61,7 +61,11 @@ def run_endpoint(conn, cfg: dict) -> int:
             if subform_name and subform_table:
                 # Gather a non-empty subform sample across the first page
                 subform_sample = next(
-                    (row for rec in page for row in (rec.get(subform_name) or [])),
+                    (
+                        {k: v for k, v in row.items() if not isinstance(v, (dict, list))}
+                        for rec in page
+                        for row in (rec.get(subform_name) or [])
+                    ),
                     None,
                 )
                 if subform_sample:
@@ -74,7 +78,11 @@ def run_endpoint(conn, cfg: dict) -> int:
         total_parent += bulk_insert(conn, table, parent_rows)
 
         if subform_name and subform_table:
-            subform_rows   = [row for rec in page for row in (rec.get(subform_name) or [])]
+            subform_rows = [
+                {k: v for k, v in row.items() if not isinstance(v, (dict, list))}
+                for rec in page
+                for row in (rec.get(subform_name) or [])
+            ]
             total_subform += bulk_insert(conn, subform_table, subform_rows)
 
         logger.info(
