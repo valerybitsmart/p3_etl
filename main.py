@@ -80,17 +80,19 @@ def run_endpoint(conn, cfg: dict) -> int:
                 # when the first page has no subform records.
                 truncate_if_exists(conn, subform_table)
 
-                # Create subform table if needed (requires a sample row for schema)
-                subform_sample = next(
-                    (
-                        {k: v for k, v in row.items() if not isinstance(v, (dict, list))}
-                        for rec in page
-                        for row in (rec.get(subform_name) or [])
-                    ),
-                    None,
-                )
-                if subform_sample:
-                    ensure_table(conn, subform_table, subform_sample)
+                # Build schema sample from the union of ALL subform rows on page 1,
+                # and inject the parent PK so the column is created in the table.
+                merged_sample: dict = {}
+                for rec in page:
+                    for row in (rec.get(subform_name) or []):
+                        for k, v in row.items():
+                            if k not in merged_sample and not isinstance(v, (dict, list)):
+                                merged_sample[k] = v
+                        # ensure parent PK column exists in sample
+                        if endpoint not in merged_sample:
+                            merged_sample[endpoint] = rec.get(endpoint)
+                if merged_sample:
+                    ensure_table(conn, subform_table, merged_sample)
 
             first_page = False
 
@@ -99,8 +101,13 @@ def run_endpoint(conn, cfg: dict) -> int:
         total_parent += bulk_insert(conn, table, parent_rows)
 
         if subform_name and subform_table:
+            # Inject the parent PK (rec[endpoint], e.g. FNCTRANS=137343) into
+            # each subform row — the API does not include it in subform records.
             subform_rows = [
-                {k: v for k, v in row.items() if not isinstance(v, (dict, list))}
+                {
+                    **{k: v for k, v in row.items() if not isinstance(v, (dict, list))},
+                    endpoint: rec.get(endpoint),
+                }
                 for rec in page
                 for row in (rec.get(subform_name) or [])
             ]
