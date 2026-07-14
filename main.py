@@ -104,6 +104,21 @@ def run_endpoint(conn, cfg: dict) -> int:
                 for rec in page
                 for row in (rec.get(subform_name) or [])
             ]
+            if subform_rows and logger.isEnabledFor(logging.DEBUG):
+                raw_keys      = set(next(
+                    row for rec in page for row in (rec.get(subform_name) or [])
+                ).keys())
+                kept_keys     = set(subform_rows[0].keys())
+                stripped_keys = raw_keys - kept_keys
+                if stripped_keys:
+                    logger.debug(
+                        "[%s/%s] stripped non-scalar subform fields: %s",
+                        tenant, endpoint, stripped_keys,
+                    )
+                logger.debug(
+                    "[%s/%s] subform columns being inserted: %s",
+                    tenant, endpoint, list(subform_rows[0].keys()),
+                )
             total_subform += bulk_insert(conn, subform_table, subform_rows)
 
         logger.info(

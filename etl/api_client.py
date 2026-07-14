@@ -1,3 +1,4 @@
+import json
 import logging
 import os
 from typing import Generator
@@ -35,10 +36,36 @@ def _get(session: requests.Session, url: str, params: dict | None = None) -> dic
     )
     def _call() -> dict:
         resp = session.get(url, params=params, timeout=timeout)
+        logger.debug("GET %s -> HTTP %s", resp.url, resp.status_code)
         resp.raise_for_status()
         return resp.json()
 
     return _call()
+
+
+def _log_subform_sample(expand: str, records: list[dict], page_num: int) -> None:
+    """Log the raw fields of the first subform row so unexpected columns are visible."""
+    for rec in records:
+        subform_rows = rec.get(expand) or []
+        if subform_rows:
+            first = subform_rows[0]
+            logger.debug(
+                "Page %d | %s sample row keys: %s",
+                page_num, expand, list(first.keys()),
+            )
+            logger.debug(
+                "Page %d | %s sample row (first 5 fields): %s",
+                page_num, expand,
+                json.dumps({k: v for k, v in list(first.items())[:5]}, default=str),
+            )
+            # Highlight any non-scalar fields that will be stripped
+            non_scalar = {k: type(v).__name__ for k, v in first.items() if isinstance(v, (dict, list))}
+            if non_scalar:
+                logger.debug(
+                    "Page %d | %s non-scalar fields (will be stripped): %s",
+                    page_num, expand, non_scalar,
+                )
+            return
 
 
 def fetch_all(
@@ -64,11 +91,17 @@ def fetch_all(
     if expand:
         params["$expand"] = expand
 
+    page_num = 0
     while True:
         data = _get(session, url, params)
         records = data.get("value", [])
         if not records:
             break
+
+        page_num += 1
+        if expand and logger.isEnabledFor(logging.DEBUG):
+            _log_subform_sample(expand, records, page_num)
+
         yield records
         if len(records) < batch:
             break
