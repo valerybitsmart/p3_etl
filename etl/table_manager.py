@@ -84,3 +84,12 @@ def truncate_table(conn: pyodbc.Connection, full_table: str) -> None:
     logger.info("Truncating [%s].[%s]", schema, table)
     conn.execute(f"TRUNCATE TABLE [{schema}].[{table}]")
     conn.commit()
+
+
+def truncate_if_exists(conn: pyodbc.Connection, full_table: str) -> bool:
+    """Truncate only if the table exists. Returns True if truncated."""
+    schema, table = _split_table(full_table)
+    if _table_exists(conn, schema, table):
+        truncate_table(conn, full_table)
+        return True
+    return False

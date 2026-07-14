@@ -23,7 +23,7 @@ from etl.api_client import fetch_all
 from etl.db import get_connection, load_all_active_endpoints, log_error, update_run_stats
 from etl.loader import bulk_insert
 from etl.notify import alert_errors, alert_no_endpoints, alert_success
-from etl.table_manager import ensure_table, truncate_table
+from etl.table_manager import ensure_table, truncate_if_exists, truncate_table
 from etl.view_manager import refresh_views
 
 def _setup_logging() -> None:
@@ -69,12 +69,18 @@ def run_endpoint(conn, cfg: dict) -> int:
 
     for page in fetch_all(cfg["base_url"], cfg["auth"], endpoint, expand=subform_name):
         if first_page:
-            # Strip subform key from parent sample before schema inference
+            # Parent table: create/sync then truncate
             parent_sample = {k: v for k, v in page[0].items() if k != subform_name}
             ensure_table(conn, table, parent_sample)
             truncate_table(conn, table)
+
             if subform_name and subform_table:
-                # Gather a non-empty subform sample across the first page
+                # Always truncate subform table if it exists — do NOT condition on
+                # finding a sample row, or leftover rows from the prior run survive
+                # when the first page has no subform records.
+                truncate_if_exists(conn, subform_table)
+
+                # Create subform table if needed (requires a sample row for schema)
                 subform_sample = next(
                     (
                         {k: v for k, v in row.items() if not isinstance(v, (dict, list))}
@@ -85,7 +91,7 @@ def run_endpoint(conn, cfg: dict) -> int:
                 )
                 if subform_sample:
                     ensure_table(conn, subform_table, subform_sample)
-                    truncate_table(conn, subform_table)
+
             first_page = False
 
         # Separate parent rows from subform rows
