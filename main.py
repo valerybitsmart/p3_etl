@@ -99,22 +99,11 @@ def run_endpoint(conn, cfg: dict) -> int:
         total_parent += bulk_insert(conn, table, parent_rows)
 
         if subform_name and subform_table:
-            subform_rows = []
-            for rec in page:
-                for row in (rec.get(subform_name) or []):
-                    clean = {k: v for k, v in row.items() if not isinstance(v, (dict, list))}
-                    # Warn when a field matching the parent endpoint name leaks through
-                    # as a scalar (e.g. FNCTRANS: null) — strip it and log once
-                    parent_field = endpoint  # e.g. 'FNCTRANS'
-                    if parent_field in clean:
-                        logger.warning(
-                            "[%s/%s] subform row contains scalar '%s' field (value: %r) "
-                            "— stripping. Raw row keys: %s",
-                            tenant, endpoint, parent_field,
-                            clean[parent_field], list(row.keys()),
-                        )
-                        del clean[parent_field]
-                    subform_rows.append(clean)
+            subform_rows = [
+                {k: v for k, v in row.items() if not isinstance(v, (dict, list))}
+                for rec in page
+                for row in (rec.get(subform_name) or [])
+            ]
             total_subform += bulk_insert(conn, subform_table, subform_rows)
 
         logger.info(
