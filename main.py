@@ -99,26 +99,22 @@ def run_endpoint(conn, cfg: dict) -> int:
         total_parent += bulk_insert(conn, table, parent_rows)
 
         if subform_name and subform_table:
-            subform_rows = [
-                {k: v for k, v in row.items() if not isinstance(v, (dict, list))}
-                for rec in page
-                for row in (rec.get(subform_name) or [])
-            ]
-            if subform_rows and logger.isEnabledFor(logging.DEBUG):
-                raw_keys      = set(next(
-                    row for rec in page for row in (rec.get(subform_name) or [])
-                ).keys())
-                kept_keys     = set(subform_rows[0].keys())
-                stripped_keys = raw_keys - kept_keys
-                if stripped_keys:
-                    logger.debug(
-                        "[%s/%s] stripped non-scalar subform fields: %s",
-                        tenant, endpoint, stripped_keys,
-                    )
-                logger.debug(
-                    "[%s/%s] subform columns being inserted: %s",
-                    tenant, endpoint, list(subform_rows[0].keys()),
-                )
+            subform_rows = []
+            for rec in page:
+                for row in (rec.get(subform_name) or []):
+                    clean = {k: v for k, v in row.items() if not isinstance(v, (dict, list))}
+                    # Warn when a field matching the parent endpoint name leaks through
+                    # as a scalar (e.g. FNCTRANS: null) — strip it and log once
+                    parent_field = endpoint  # e.g. 'FNCTRANS'
+                    if parent_field in clean:
+                        logger.warning(
+                            "[%s/%s] subform row contains scalar '%s' field (value: %r) "
+                            "— stripping. Raw row keys: %s",
+                            tenant, endpoint, parent_field,
+                            clean[parent_field], list(row.keys()),
+                        )
+                        del clean[parent_field]
+                    subform_rows.append(clean)
             total_subform += bulk_insert(conn, subform_table, subform_rows)
 
         logger.info(
