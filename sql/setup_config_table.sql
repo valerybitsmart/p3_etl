@@ -51,7 +51,28 @@ BEGIN
 END;
 
 -- ------------------------------------------------------------
--- 3. Error log
+-- 3. Run log (one row per successful endpoint load)
+-- ------------------------------------------------------------
+IF NOT EXISTS (
+    SELECT 1 FROM INFORMATION_SCHEMA.TABLES
+    WHERE TABLE_SCHEMA = 'dbo' AND TABLE_NAME = 'etl_run_log'
+)
+BEGIN
+    CREATE TABLE dbo.etl_run_log (
+        id              INT IDENTITY(1,1) PRIMARY KEY,
+        run_time        DATETIME2      NOT NULL DEFAULT GETDATE(),
+        tenant          NVARCHAR(50)   NOT NULL,
+        endpoint        NVARCHAR(200)  NOT NULL,
+        target_table    NVARCHAR(200)  NOT NULL,
+        parent_rows     INT            NOT NULL DEFAULT 0,
+        subform_rows    INT            NOT NULL DEFAULT 0,
+        duration_sec    INT            NULL,      -- wall-clock seconds for this endpoint
+        subform_table   NVARCHAR(200)  NULL
+    );
+END;
+
+-- ------------------------------------------------------------
+-- 4. Error log
 -- ------------------------------------------------------------
 IF NOT EXISTS (
     SELECT 1 FROM INFORMATION_SCHEMA.TABLES

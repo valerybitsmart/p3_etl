@@ -90,6 +90,30 @@ def log_error(
         logger.exception("Could not write to etl_error_log")
 
 
+def log_success(
+    conn: pyodbc.Connection,
+    tenant: str,
+    endpoint: str,
+    target_table: str,
+    parent_rows: int,
+    duration_sec: int,
+    subform_rows: int = 0,
+    subform_table: str | None = None,
+) -> None:
+    """Insert one row into dbo.etl_run_log. Never raises."""
+    try:
+        conn.execute(
+            "INSERT INTO dbo.etl_run_log "
+            "(tenant, endpoint, target_table, parent_rows, subform_rows, duration_sec, subform_table) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?)",
+            tenant, endpoint, target_table,
+            parent_rows, subform_rows, duration_sec, subform_table,
+        )
+        conn.commit()
+    except Exception:
+        logger.exception("Could not write to etl_run_log")
+
+
 def update_run_stats(conn: pyodbc.Connection, config_id: int, row_count: int) -> None:
     conn.execute(
         "UPDATE dbo.etl_api_config "

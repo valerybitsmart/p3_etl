@@ -12,6 +12,7 @@ import argparse
 import logging
 import os
 import sys
+import time
 from datetime import datetime
 from pathlib import Path
 
@@ -20,7 +21,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 from etl.api_client import fetch_all
-from etl.db import get_connection, load_all_active_endpoints, log_error, update_run_stats
+from etl.db import get_connection, load_all_active_endpoints, log_error, log_success, update_run_stats
 from etl.loader import bulk_insert
 from etl.notify import alert_errors, alert_no_endpoints, alert_success
 from etl.table_manager import ensure_table, truncate_if_exists, truncate_table
@@ -50,7 +51,7 @@ logger = logging.getLogger("etl.main")
 def run_endpoint(conn, cfg: dict) -> int:
     """
     Load one tenant/endpoint combination, optionally expanding a subform.
-    Returns parent row count. Raises on failure.
+    Returns (parent_rows, subform_rows, duration_sec). Raises on failure.
     """
     tenant        = cfg["tenant"]
     endpoint      = cfg["endpoint"]
@@ -66,6 +67,7 @@ def run_endpoint(conn, cfg: dict) -> int:
     total_parent  = 0
     total_subform = 0
     first_page    = True
+    started_at    = time.monotonic()
 
     for page in fetch_all(cfg["base_url"], cfg["auth"], endpoint, expand=subform_name):
         if first_page:
@@ -118,12 +120,13 @@ def run_endpoint(conn, cfg: dict) -> int:
             tenant, endpoint, total_parent, total_subform,
         )
 
+    duration_sec = int(time.monotonic() - started_at)
     update_run_stats(conn, cfg["id"], total_parent)
     logger.info(
-        "=== [%s] %s done - parent: %d rows, subform: %d rows ===",
-        tenant, endpoint, total_parent, total_subform,
+        "=== [%s] %s done - parent: %d rows, subform: %d rows, duration: %ds ===",
+        tenant, endpoint, total_parent, total_subform, duration_sec,
     )
-    return total_parent
+    return total_parent, total_subform, duration_sec
 
 
 def main() -> None:
@@ -153,12 +156,22 @@ def main() -> None:
 
     for cfg in configs:
         try:
-            rows = run_endpoint(conn, cfg)
+            parent_rows, subform_rows, duration_sec = run_endpoint(conn, cfg)
+            log_success(
+                conn,
+                tenant       = cfg["tenant"],
+                endpoint     = cfg["endpoint"],
+                target_table = cfg["target_table"],
+                parent_rows  = parent_rows,
+                subform_rows = subform_rows,
+                duration_sec = duration_sec,
+                subform_table= cfg.get("subform_table"),
+            )
             successes.append({
                 "endpoint": cfg["endpoint"],
                 "tenant":   cfg["tenant"],
                 "table":    cfg["target_table"],
-                "rows":     rows,
+                "rows":     parent_rows,
             })
         except Exception as exc:
             logger.exception("Failed [%s/%s]", cfg["tenant"], cfg["endpoint"])
